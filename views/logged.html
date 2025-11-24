@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/style.css" />
+  <title>Logged In</title>
+</head>
+<body onload="onPageLoad()">
+  <div class="container">
+    <!-- Navbar -->
+    <div class="navbar">
+      <img src="images/logo2.png" alt="Top Spotify Logo" class="logo" />
+
+      <nav>
+        <a
+          href="https://www.linkedin.com/in/aden-stamm/"
+          target="_blank"
+          class="btn"
+        >
+          <strong>Contact Us</strong>
+        </a>
+      </nav>
+    </div>
+
+    <!-- Main content -->
+    <div id="cover" class="cover">
+      <div class="navi">
+        <h1>WELCOME TO YOUR TOP SPOTIFY</h1>
+      </div>
+
+      <!-- Toggle buttons -->
+      <div class="toggle">
+        <div class="singles">
+          <button
+            id="singles-btn"
+            class="singles-btn"
+            onclick="getSongs()"
+          >
+            Top Songs
+          </button>
+        </div>
+
+        <div class="artists">
+          <button
+            id="artists-btn"
+            class="artist-btn"
+            onclick="getArtists()"
+          >
+            Top Artists
+          </button>
+        </div>
+      </div>
+
+      <!-- Results list -->
+      <div id="API" class="API">
+        <div class="list">
+          <ol id="list" class="results">
+            <!-- JS will inject <li> items here -->
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/java.js"></script>
+</body>
+</html>
