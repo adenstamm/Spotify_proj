@@ -15,7 +15,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Session configuration
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
+  secret: process.env.SESSION_SECRET || 'your-super-secret-random-string-here-change-this',
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -122,8 +122,9 @@ app.post('/api/auth/refresh', async (req, res) => {
       return res.status(401).json({ error: 'No valid session found' });
     }
 
-    // Check if token is expired
+    // Check if token is still valid (not expired)
     if (new Date(sessionData.expires_at) > new Date()) {
+      // Token still valid, return it
       return res.json({
         success: true,
         access_token: sessionData.access_token,
