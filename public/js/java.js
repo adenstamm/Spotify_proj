@@ -5,6 +5,7 @@ var client_id = "be0e6280dd0545b6a67f660345b25628";
 const AUTHORIZE = "https://accounts.spotify.com/authorize";
 const ARTISTS = "https://api.spotify.com/v1/me/top/artists?offset=0&limit=10&time_range=long_term";
 const TRACKS  = "https://api.spotify.com/v1/me/top/tracks?offset=0&limit=10&time_range=long_term";
+const PLAYLISTS = "https://api.spotify.com/v1/me/playlists"
 
 // Get DOM elements safely (only available on logged.html)
 function getList() {
@@ -21,7 +22,7 @@ function authorize() {
   url += "&response_type=code";
   url += "&redirect_uri=" + encodeURI(redirect);
   url += "&show_dialog=true";
-  url += "&scope=user-read-private user-read-email user-read-playback-state user-top-read";
+  url += "&scope=user-read-private user-read-email user-read-playback-state user-top-read playlist-read-private playlist-read-collaborative";
   window.location.href = url;
 }
 
@@ -88,7 +89,7 @@ async function refreshAccessToken() {
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include' // Important: include cookies for session
+      credentials: 'include' // include cookies for session
     });
 
     const data = await response.json();
@@ -331,3 +332,81 @@ function artistList(data) {
     if (list) list.appendChild(li);
   }
 }
+
+async function getPlaylists() {
+  try {
+    const token = await getValidAccessToken();
+    callApi("GET", PLAYLISTS, null, handlePlaylistResponse) //passing reference to method, calls immi when request is done 
+  }
+  catch (error) {
+    console.error('Error getting access token:', error);
+}
+}
+
+function handlePlaylistResponse(){
+  if (this.status == 200){
+    var data = JSON.parse(this.responseText);
+    playlistList(data);
+  }
+  else if (this.status == 401) {
+    // Token expired, try to refresh
+    refreshAccessToken().then(() => {
+      getPlaylists(); // Retry the request
+    }).catch(() => {
+      alert('Session expired. Please log in again.');
+    });
+  }
+  else{
+    console.log(this.responseText);
+    alert('Error loading playlists: ' + this.responseText);
+  }
+}
+
+function playlistList(data){
+  removeItem();
+  const cover = getCover();
+  if (cover) cover.classList.remove('hide');
+  for(i=0;i<data.items.length;i++){
+    const list_item= document.createElement("div")
+    const list_text= document.createElement("div")
+    const song = document.createElement("div") //name of playlist
+    const img = document.createElement('img')
+    const span = document.createElement('span');
+
+    list_item.classList.add("list-item")
+    list_text.classList.add("list-text")
+    song.classList.add("playlist-name")
+    img.classList.add("resize");
+
+    var li = document.createElement("li")
+    var number = document.createElement('span');
+    number.textContent = (i+1) + ".";
+
+    number.textContent = (i+1) + ".";
+    number.style.fontWeight = "bold";
+    number.style.marginRight = "10px";
+    if (data.items[i].images && data.items[i].images.length > 1) {
+      img.src = data.items[i].images[1].url;
+    } else if (data.items[i].images && data.items[i].images.length > 0) {
+      img.src = data.items[i].images[0].url;  // Use first image if second doesn't exist
+    } else {
+      img.src = '';  // No image available
+      img.alt = 'No image';
+    }
+
+    span.innerHTML = data.items[i].name;
+    song.appendChild(span);
+
+    list_text.appendChild(song);
+
+    // Add number first, then text, then image (image on right)
+    list_item.insertBefore(number, list_item.firstChild);
+    list_item.appendChild(list_text);
+    list_item.appendChild(img);  // Image on the right side
+    li.appendChild(list_item);
+
+    const list = getList();
+    if (list) list.appendChild(li);
+  }
+}
+

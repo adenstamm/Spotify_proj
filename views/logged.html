@@ -12,53 +12,57 @@
     <!-- Navbar -->
     <div class="navbar">
       <img src="images/logo2.png" alt="Top Spotify Logo" class="logo" />
-
       <nav>
-        <a
-          href="https://www.linkedin.com/in/aden-stamm/"
-          target="_blank"
-          class="btn"
-        >
+        <a href="https://www.linkedin.com/in/aden-stamm/" target="_blank" class="btn">
           <strong>Contact Us</strong>
         </a>
       </nav>
     </div>
 
-    <!-- Main content -->
-    <div id="cover" class="cover">
-      <div class="navi">
-        <h1>WELCOME TO YOUR TOP SPOTIFY</h1>
-      </div>
-
-      <!-- Toggle buttons -->
-      <div class="toggle">
-        <div class="singles">
-          <button
-            id="singles-btn"
-            class="singles-btn"
-            onclick="getSongs()"
+    <!-- Main layout: Sidebar + Content -->
+    <div class="main-layout">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <h2 class="sidebar-title">More Functions</h2>
+        <div class="sidebar-content">
+          <button 
+            id="average-age-btn" 
+            class="sidebar-btn" 
+            onclick="getPlaylists()"
           >
-            Top Songs
+            Get Average Age
           </button>
         </div>
+      </aside>
+      
+      <!-- Main content area -->
+      <div class="content-area">
+        <div id="cover" class="cover">
+          <div class="navi">
+            <h1>WELCOME TO YOUR TOP SPOTIFY</h1>
+          </div>
 
-        <div class="artists">
-          <button
-            id="artists-btn"
-            class="artist-btn"
-            onclick="getArtists()"
-          >
-            Top Artists
-          </button>
-        </div>
-      </div>
+          <!-- Toggle buttons -->
+          <div class="toggle">
+            <div class="singles">
+              <button id="singles-btn" class="singles-btn" onclick="getSongs()">
+                Top Songs
+              </button>
+            </div>
+            <div class="artists">
+              <button id="artists-btn" class="artist-btn" onclick="getArtists()">
+                Top Artists
+              </button>
+              </div>
+          </div>
 
-      <!-- Results list -->
-      <div id="API" class="API">
-        <div class="list">
-          <ol id="list" class="results">
-            <!-- JS will inject <li> items here -->
-          </ol>
+          <!-- Results list -->
+          <div id="API" class="API">
+            <div class="list">
+              <ol id="list" class="results">
+              </ol>
+            </div>
+          </div>
         </div>
       </div>
     </div>
