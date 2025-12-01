@@ -7,6 +7,11 @@ const ARTISTS = "https://api.spotify.com/v1/me/top/artists?offset=0&limit=10&tim
 const TRACKS  = "https://api.spotify.com/v1/me/top/tracks?offset=0&limit=10&time_range=long_term";
 const PLAYLISTS = "https://api.spotify.com/v1/me/playlists"
 
+// Global variables for playlist pagination
+let allPlaylistTracks = [];
+let currentPlaylistId = null;
+let currentPlaylistName = null;
+
 // Get DOM elements safely (only available on logged.html)
 function getList() {
   return document.getElementById('list');
@@ -237,10 +242,9 @@ function songList(data) {
     list_text.appendChild(popu);
     list_text.appendChild(ref);
     
-    // Add number first, then text, then image (image on right)
     list_item.insertBefore(number, list_item.firstChild);
     list_item.appendChild(list_text);
-    list_item.appendChild(img);  // Image on the right side
+    list_item.appendChild(img); 
     li.appendChild(list_item);
 
     const list = getList();
@@ -322,10 +326,9 @@ function artistList(data) {
     list_text.appendChild(popu);
     list_text.appendChild(ref);
     
-    // Add number first, then text, then image (image on right)
     list_item.insertBefore(number, list_item.firstChild);
     list_item.appendChild(list_text);
-    list_item.appendChild(img);  // Image on the right side
+    list_item.appendChild(img); 
     li.appendChild(list_item);
 
     const list = getList();
@@ -349,9 +352,9 @@ function handlePlaylistResponse(){
     playlistList(data);
   }
   else if (this.status == 401) {
-    // Token expired, try to refresh
+    // Token expired
     refreshAccessToken().then(() => {
-      getPlaylists(); // Retry the request
+      getPlaylists(); // retry request
     }).catch(() => {
       alert('Session expired. Please log in again.');
     });
@@ -388,9 +391,9 @@ function playlistList(data){
     if (data.items[i].images && data.items[i].images.length > 1) {
       img.src = data.items[i].images[1].url;
     } else if (data.items[i].images && data.items[i].images.length > 0) {
-      img.src = data.items[i].images[0].url;  // Use first image if second doesn't exist
+      img.src = data.items[i].images[0].url;  
     } else {
-      img.src = '';  // No image available
+      img.src = ''; 
       img.alt = 'No image';
     }
 
@@ -399,14 +402,168 @@ function playlistList(data){
 
     list_text.appendChild(song);
 
-    // Add number first, then text, then image (image on right)
     list_item.insertBefore(number, list_item.firstChild);
     list_item.appendChild(list_text);
     list_item.appendChild(img);  // Image on the right side
     li.appendChild(list_item);
+
+    const playlistId = data.items[i].id;
+    const playlistName = data.items[i].name;
+    
+    // Make the playlist item clickable
+    list_item.style.cursor = 'pointer';
+    list_item.addEventListener('click', function() {
+      handlePlaylistClick(playlistId, playlistName);
+    });
 
     const list = getList();
     if (list) list.appendChild(li);
   }
 }
 
+async function getPlaylistTracks(playlistId){
+  try {
+    const token = await getValidAccessToken();
+    callApi("GET", `https://api.spotify.com/v1/playlists/${playlistId}/tracks`, null, handlePlaylistTracksResponse);
+  } catch (error) {
+    console.error('Error getting access token:', error);
+  }
+}
+
+// Handler function for when a playlist is clicked
+function handlePlaylistClick(playlistId, playlistName) {
+  allPlaylistTracks = [];
+  currentPlaylistId = playlistId;
+  currentPlaylistName = playlistName;
+
+  getPlaylistTracks(playlistId);
+}
+
+function handlePlaylistTracksResponse(){
+  if (this.status == 200){
+    var data = JSON.parse(this.responseText);
+    allPlaylistTracks = allPlaylistTracks.concat(data.items);
+    if (data.next){
+      callApi("GET", data.next, null, handlePlaylistTracksResponse);
+    }
+    else{
+      getAverageAge(allPlaylistTracks);
+    }
+  }
+  else if (this.status == 401){
+    // Token expired
+    refreshAccessToken().then(() => {
+      handlePlaylistClick(playlistId, playlistName);
+    }).catch(() => {
+      alert('Session expired. Please log in again.');
+    });
+  }
+}
+
+function getAverageAge(tracks){
+  if (!Array.isArray(tracks) || tracks.length === 0) {
+    console.log('No tracks to average');
+    return null;
+  }
+  
+  let totalTimestamp = 0;
+  let validTracks = 0;
+  const dates = []; // Store dates for averaging
+  
+  for(let i = 0; i < tracks.length; i++){
+    if (tracks[i] && tracks[i].track && tracks[i].track.album) {
+      const releaseDate = tracks[i].track.album.release_date;
+      
+      if (releaseDate) {
+        // Parse the date - could be "YYYY-MM-DD" or just "YYYY"
+        let dateObj;
+        if (releaseDate.length === 4) {
+          // Just year - use January 1st of that year
+          dateObj = new Date(parseInt(releaseDate), 0, 1);
+        } else {
+          // Full date
+          dateObj = new Date(releaseDate);
+        }
+        
+        // Check if date is valid
+        if (!isNaN(dateObj.getTime())) {
+          dates.push(dateObj);
+          totalTimestamp += dateObj.getTime(); // Add timestamp
+          validTracks++;
+          console.log(`Track: ${tracks[i].track.name}, Release: ${releaseDate}`);
+        }
+      }
+    }
+  }
+  
+  if (validTracks === 0) {
+    console.log('No tracks with valid release dates found');
+    return null;
+  }
+  
+  // Calculate average date from timestamps
+  const averageTimestamp = totalTimestamp / validTracks;
+  const averageDate = new Date(averageTimestamp);
+  
+  // Calculate how many years ago the average date was
+  const currentDate = new Date();
+  const yearsAgo = (currentDate - averageDate) / (1000 * 60 * 60 * 24 * 365.25);
+  
+  console.log(`Average date: ${averageDate.toLocaleDateString()}, ${yearsAgo.toFixed(2)} years ago`);
+  
+  displayAverageAge(currentPlaylistName, averageDate, yearsAgo, validTracks, tracks.length);
+  
+  return { date: averageDate, yearsAgo: yearsAgo };
+}
+
+function displayAverageAge(playlistName, averageDate, yearsAgo, validTracks, totalTracks) {
+  removeItem();
+  const cover = getCover();
+  if (cover) cover.classList.remove('hide');
+  
+  const list = getList();
+  if (!list) return;
+  
+  // Format the date nicely
+  const monthNames = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+  
+  const day = averageDate.getDate();
+  const month = monthNames[averageDate.getMonth()];
+  const year = averageDate.getFullYear();
+  const formattedDate = `${month} ${day}, ${year}`;
+  
+  // Create a result display
+  const resultItem = document.createElement('li');
+  resultItem.style.padding = '30px';
+  resultItem.style.textAlign = 'center';
+  resultItem.style.background = 'rgba(29, 185, 84, 0.1)';
+  resultItem.style.border = '2px solid #1db954';
+  resultItem.style.borderRadius = '12px';
+  
+  const title = document.createElement('h2');
+  title.textContent = playlistName;
+  title.style.color = '#ffffff';
+  title.style.marginBottom = '20px';
+  title.style.fontSize = '24px';
+  
+  const averageText = document.createElement('div');
+  averageText.innerHTML = `
+    <div style="font-size: 36px; font-weight: 700; color: #1db954; margin: 20px 0;">
+      ${formattedDate}
+    </div>
+    <div style="font-size: 24px; color: #b3b3b3; margin-top: 15px;">
+      ${yearsAgo.toFixed(2)} years ago
+    </div>
+    <div style="font-size: 16px; color: #b3b3b3; margin-top: 20px;">
+      Average release date of songs in this playlist
+    </div>
+    <div style="font-size: 14px; color: #b3b3b3; margin-top: 10px;">
+      Calculated from ${validTracks} of ${totalTracks} tracks
+    </div>
+  `;
+  
+  resultItem.appendChild(title);
+  resultItem.appendChild(averageText);
+  list.appendChild(resultItem);
+}
