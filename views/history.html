@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/style.css" />
+  <title>Extended History</title>
+</head>
+<body>
+  <div class="container">
+    <!-- Navbar -->
+    <div class="navbar">
+      <img src="images/logo2.png" alt="Top Spotify Logo" class="logo" />
+      <nav>
+        <a href="/logged" class="btn" style="margin-right: 10px;">
+          <strong>Back to Dashboard</strong>
+        </a>
+        <a href="https://www.linkedin.com/in/aden-stamm/" target="_blank" class="btn">
+          <strong>Contact Us</strong>
+        </a>
+      </nav>
+    </div>
+
+    <!-- Main content area -->
+    <div class="content-area" style="max-width: 800px; margin: 0 auto; padding: 40px 20px;">
+      <div class="cover">
+        <div class="navi">
+          <h1>Extended Listening History</h1>
+          <p style="color: #b3b3b3; margin-top: 10px; font-size: 16px;">
+            Upload your Spotify extended history JSON files to analyze your listening patterns
+          </p>
+        </div>
+
+        <!-- Upload Section -->
+        <div style="margin-top: 40px; padding: 30px; background-color: #2a2a2a; border-radius: 8px; border: 1px solid #404040;">
+          <button 
+            id="upload-history-btn" 
+            class="sidebar-btn" 
+            style="width: 100%; padding: 15px; font-size: 16px;"
+            onclick="document.getElementById('extended-history-input').click()"
+          >
+            Upload Extended History
+          </button>
+          <input 
+            type="file" 
+            id="extended-history-input" 
+            webkitdirectory 
+            directory 
+            multiple 
+            style="display: none;"
+            onchange="handleFolderUpload(event)"
+          />
+          
+          <div id="extended-history-status" style="margin-top: 20px; font-size: 14px; color: #b3b3b3; text-align: center;"></div>
+          <pre id="extended-history-result" style="margin-top: 20px; font-size: 12px; color: #b3b3b3; white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow-y: auto; background-color: #1a1a1a; padding: 15px; border-radius: 4px; border: 1px solid #333;"></pre>
+        </div>
+
+        <!-- History Actions Section (shown after upload) -->
+        <div id="history-section" style="display: none; margin-top: 40px; padding: 30px; background-color: #2a2a2a; border-radius: 8px; border: 1px solid #404040;">
+          <h2 class="history-section-title" style="text-align: center; margin-bottom: 25px;">Your Listening History</h2>
+          
+          <div style="display: flex; flex-direction: column; gap: 15px;">
+            <button 
+              id="top-songs-btn" 
+              class="sidebar-btn" 
+              style="width: 100%; padding: 15px; font-size: 16px;"
+              onclick="viewTopSongs()"
+            >
+              View Top 100 Songs
+            </button>
+            <button 
+              id="top-artists-btn" 
+              class="sidebar-btn" 
+              style="width: 100%; padding: 15px; font-size: 16px;"
+              onclick="viewTopArtists()"
+            >
+              View Top 100 Artists
+            </button>
+            
+            <div class="search-container" style="margin-top: 10px;">
+              <input 
+                type="text" 
+                id="history-search-input" 
+                class="search-input" 
+                placeholder="Search song or artist..."
+                onkeypress="if(event.key === 'Enter') searchHistoryOnPage()"
+              />
+              <button 
+                id="search-btn" 
+                class="search-btn" 
+                onclick="searchHistoryOnPage()"
+              >
+                Search
+              </button>
+            </div>
+            
+            <!-- Results area -->
+            <div id="results-container" style="margin-top: 30px; display: none;">
+              <ol id="history-results-list" class="results" style="max-height: 500px; overflow-y: auto;"></ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/java.js"></script>
+  <script>
+    // Handle folder upload on this page
+    function handleFolderUpload(event) {
+      const files = event.target.files;
+      const status = document.getElementById("extended-history-status");
+
+      if (!files || files.length === 0) {
+        console.log("No files selected");
+        if (status) status.textContent = "No folder selected.";
+        return;
+      }
+
+      const fileArray = Array.from(files);
+      
+      // Filter JSON files (case-insensitive)
+      const jsonFiles = fileArray.filter(f => f.name.toLowerCase().endsWith(".json"));
+      
+      // Calculate total size
+      const totalBytes = jsonFiles.reduce((sum, f) => sum + f.size, 0);
+      const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+      
+      console.log(`Selected folder: ${fileArray.length} files total`);
+      console.log(`JSON files: ${jsonFiles.length}, total ${totalMB} MB`);
+      
+      // Store files globally (from java.js)
+      if (typeof selectedHistoryJsonFiles !== 'undefined') {
+        selectedHistoryJsonFiles = jsonFiles;
+      } else {
+        window.selectedHistoryJsonFiles = jsonFiles;
+      }
+      
+      // Update UI with status
+      if (status) {
+        if (jsonFiles.length === 0) {
+          status.textContent = "No .json files found in that folder.";
+        } else {
+          status.textContent = `Ready: ${jsonFiles.length} JSON files (${totalMB} MB). Processing...`;
+          // Automatically process after a short delay to show the status
+          setTimeout(() => {
+            parseExtendedHistory();
+          }, 500);
+        }
+      }
+    }
+
+    // Parse extended history (modified for this page)
+    async function parseExtendedHistory() {
+      const status = document.getElementById("extended-history-status");
+      const out = document.getElementById("extended-history-result");
+
+      const files = window.selectedHistoryJsonFiles || selectedHistoryJsonFiles;
+      if (!files || files.length === 0) {
+        alert("No files selected. Please choose a folder first.");
+        return;
+      }
+
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append("files", file, file.name);
+      }
+
+      // UI feedback
+      if (status) status.textContent = `Uploading ${files.length} JSON files...`;
+      if (out) out.textContent = "";
+
+      try {
+        const resp = await fetch("/api/upload/history", {
+          method: "POST",
+          body: formData,
+          credentials: "include"
+        });
+
+        const text = await resp.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          console.error("Server returned non-JSON:", text);
+          if (out) out.textContent = `Server Error (Status ${resp.status}):\n${text.substring(0, 500)}`;
+          if (status) status.textContent = `Error: Server returned non-JSON (Status ${resp.status})`;
+          throw new Error(`Server returned non-JSON (Status ${resp.status}). Check your server logs.`);
+        }
+
+        if (!resp.ok) {
+          console.error("Upload failed:", data);
+          if (status) status.textContent = "Upload failed.";
+          if (out) out.textContent = JSON.stringify(data, null, 2);
+          return;
+        }
+
+        if (status) status.textContent = `Upload complete! Processed ${data.processedRecords || 0} records from ${data.successful || 0} files.`;
+        if (out) out.textContent = JSON.stringify(data, null, 2);
+
+        // Show the history section after successful upload
+        const historySection = document.getElementById("history-section");
+        if (historySection && data.successful > 0) {
+          historySection.style.display = "block";
+          console.log("History section is now visible");
+        }
+
+        console.log("Upload summary:", data);
+      } catch (err) {
+        console.error(err);
+        if (status) status.textContent = `Error: ${err.message}`;
+        if (out) out.textContent = err.stack || String(err);
+        alert(err.message);
+      }
+    }
+
+    // Navigation functions
+    function viewTopSongs() {
+      window.location.href = '/logged?view=top-songs';
+    }
+
+    function viewTopArtists() {
+      window.location.href = '/logged?view=top-artists';
+    }
+
+    // Search function for this page
+    async function searchHistoryOnPage() {
+      const searchInput = document.getElementById('history-search-input');
+      const resultsContainer = document.getElementById('results-container');
+      const resultsList = document.getElementById('history-results-list');
+      
+      if (!searchInput || !resultsContainer || !resultsList) return;
+      
+      const query = searchInput.value.trim();
+      
+      if (!query) {
+        alert('Please enter a search query');
+        return;
+      }
+      
+      resultsList.innerHTML = '<li style="color: #b3b3b3; padding: 10px; text-align: center;">Searching...</li>';
+      resultsContainer.style.display = 'block';
+      
+      try {
+        const response = await fetch(`/api/history/search?q=${encodeURIComponent(query)}`, {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        resultsList.innerHTML = '';
+        
+        if ((!data.songs || data.songs.length === 0) && (!data.artists || data.artists.length === 0)) {
+          resultsList.innerHTML = `<li style="color: #b3b3b3; padding: 20px; text-align: center;">No results found for "${query}"</li>`;
+          return;
+        }
+        
+        // Add header
+        const headerItem = document.createElement('li');
+        headerItem.style.cssText = 'font-weight: bold; font-size: 24px; color: #1db954; padding: 20px 0 15px 0; text-align: center; border-bottom: 2px solid #1db954; margin-bottom: 10px;';
+        headerItem.textContent = `Search Results for "${query}"`;
+        resultsList.appendChild(headerItem);
+        
+        // Display songs
+        if (data.songs && data.songs.length > 0) {
+          const songsHeader = document.createElement('li');
+          songsHeader.style.cssText = 'font-weight: bold; font-size: 18px; color: #1db954; padding: 15px 0 10px 0; border-bottom: 1px solid #333;';
+          songsHeader.textContent = 'Songs:';
+          resultsList.appendChild(songsHeader);
+          
+          data.songs.forEach((song) => {
+            const listItem = document.createElement('li');
+            listItem.className = 'list-item';
+            
+            const listText = document.createElement('div');
+            listText.className = 'list-text';
+            listText.innerHTML = `
+              <span style="font-weight: bold;">${song.track_name}</span>
+              <span style="color: #b3b3b3;">by ${song.artist_name}</span>
+              <span style="color: #1db954; margin-left: 10px;">(${song.play_count} ${song.play_count === 1 ? 'play' : 'plays'})</span>
+            `;
+            
+            listItem.appendChild(listText);
+            resultsList.appendChild(listItem);
+          });
+        }
+        
+        // Display artists
+        if (data.artists && data.artists.length > 0) {
+          const artistsHeader = document.createElement('li');
+          artistsHeader.style.cssText = 'font-weight: bold; font-size: 18px; color: #1db954; padding: 15px 0 10px 0; margin-top: 20px; border-bottom: 1px solid #333;';
+          artistsHeader.textContent = 'Artists:';
+          resultsList.appendChild(artistsHeader);
+          
+          data.artists.forEach((artist) => {
+            const listItem = document.createElement('li');
+            listItem.className = 'list-item';
+            
+            const listText = document.createElement('div');
+            listText.className = 'list-text';
+            listText.innerHTML = `
+              <span style="font-weight: bold;">${artist.artist_name}</span>
+              <span style="color: #1db954; margin-left: 10px;">(${artist.total_plays} ${artist.total_plays === 1 ? 'play' : 'plays'}, ${artist.total_tracks} ${artist.total_tracks === 1 ? 'song' : 'songs'})</span>
+            `;
+            
+            listItem.appendChild(listText);
+            resultsList.appendChild(listItem);
+          });
+        }
+      } catch (error) {
+        console.error('Error searching:', error);
+        resultsList.innerHTML = `<li style="color: #ff6b6b; padding: 20px;">Error: ${error.message}</li>`;
+      }
+    }
+  </script>
+</body>
+</html>
+

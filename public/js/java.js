@@ -12,6 +12,9 @@ let allPlaylistTracks = [];
 let currentPlaylistId = null;
 let currentPlaylistName = null;
 
+// Global variable for extended history files
+let selectedHistoryJsonFiles = [];
+
 // Get DOM elements safely (only available on logged.html)
 function getList() {
   return document.getElementById('list');
@@ -32,6 +35,19 @@ function authorize() {
 }
 
 function onPageLoad() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const view = urlParams.get("view");
+  
+  // Check if we should load a specific view from extended history
+  if (view === "top-songs") {
+    getTopSongs();
+    return;
+  } else if (view === "top-artists") {
+    getTopArtists();
+    return;
+  }
+  
+  // Default behavior
   if (window.location.search.length > 0) {
     handleRedirect(); // first time user has allowed access
   }
@@ -47,6 +63,114 @@ function handleRedirect() {
     window.history.pushState("", "", redirect);
   }
 }
+
+function handleFolderUpload(event) {
+  const files = event.target.files;
+  const status = document.getElementById("extended-history-status");
+
+  if (!files || files.length === 0) {
+    console.log("No files selected");
+    selectedHistoryJsonFiles = [];
+    if (status) status.textContent = "No folder selected.";
+    return;
+  }
+
+  const fileArray = Array.from(files);
+  
+  // Filter JSON files (case-insensitive)
+  const jsonFiles = fileArray.filter(f => f.name.toLowerCase().endsWith(".json"));
+  
+  // Calculate total size
+  const totalBytes = jsonFiles.reduce((sum, f) => sum + f.size, 0);
+  const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+  
+  console.log(`Selected folder: ${fileArray.length} files total`);
+  console.log(`JSON files: ${jsonFiles.length}, total ${totalMB} MB`);
+  
+  // Store files globally
+  selectedHistoryJsonFiles = jsonFiles;
+  
+  // Update UI with status
+  if (status) {
+    if (jsonFiles.length === 0) {
+      status.textContent = "No .json files found in that folder.";
+    } else {
+      status.textContent = `Ready: ${jsonFiles.length} JSON files (${totalMB} MB). Processing...`;
+      // Automatically process after a short delay to show the status
+      setTimeout(() => {
+        parseExtendedHistory();
+      }, 500);
+    }
+  }
+}
+
+async function parseExtendedHistory() {
+  const status = document.getElementById("extended-history-status");
+  const out = document.getElementById("extended-history-result");
+
+  if (!selectedHistoryJsonFiles || selectedHistoryJsonFiles.length === 0) {
+    alert("No files selected. Please choose a folder first.");
+    return;
+  }
+
+  const formData = new FormData();
+  for (const file of selectedHistoryJsonFiles) {
+    formData.append("files", file, file.name);
+  }
+
+  // UI feedback
+  if (status) status.textContent = `Uploading ${selectedHistoryJsonFiles.length} JSON files...`;
+  if (out) out.textContent = "";
+
+  try {
+    const resp = await fetch("/api/upload/history", {
+      method: "POST",
+      body: formData,
+      credentials: "include"
+    });
+
+    const text = await resp.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error("Server returned non-JSON:", text);
+      console.error("Response status:", resp.status);
+      console.error("Response headers:", resp.headers);
+      // Show the actual response in the output area
+      if (out) out.textContent = `Server Error (Status ${resp.status}):\n${text.substring(0, 500)}`;
+      if (status) status.textContent = `Error: Server returned non-JSON (Status ${resp.status})`;
+      throw new Error(`Server returned non-JSON (Status ${resp.status}). Check your server logs. Response: ${text.substring(0, 100)}`);
+    }
+
+    if (!resp.ok) {
+      console.error("Upload failed:", data);
+      if (status) status.textContent = "Upload failed.";
+      if (out) out.textContent = JSON.stringify(data, null, 2);
+      return;
+    }
+
+    if (status) status.textContent = "Upload complete. (Pass 1 summary below)";
+    if (out) out.textContent = JSON.stringify(data, null, 2);
+
+    // Show the history section after successful upload
+    const historySection = document.getElementById("history-section");
+    if (historySection && data.successful > 0) {
+      historySection.style.display = "block";
+      console.log("History section is now visible");
+    } else {
+      console.log("History section not shown. Upload data:", data);
+    }
+
+    console.log("Upload summary:", data);
+  } catch (err) {
+    console.error(err);
+    if (status) status.textContent = `Error: ${err.message}`;
+    if (out) out.textContent = err.stack || String(err);
+    alert(err.message);
+  }
+}
+
 
 function getCode() {
   let code = null;
@@ -565,4 +689,222 @@ function displayAverageAge(playlistName, averageDate, yearsAgo, validTracks, tot
   resultItem.appendChild(title);
   resultItem.appendChild(averageText);
   list.appendChild(resultItem);
+}
+
+// Extended History Functions
+async function getTopSongs() {
+  const list = getList();
+  const cover = getCover();
+  if (!list || !cover) return;
+
+  // Clear previous results completely
+  list.innerHTML = '';
+  
+  // Add a loading message
+  const loadingItem = document.createElement('li');
+  loadingItem.style.cssText = 'color: #b3b3b3; padding: 20px; text-align: center;';
+  loadingItem.textContent = 'Loading your top songs...';
+  list.appendChild(loadingItem);
+  
+  try {
+    const response = await fetch('/api/history/top-songs', {
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Clear loading message
+    list.innerHTML = '';
+    
+    if (!data.songs || data.songs.length === 0) {
+      list.innerHTML = '<li style="color: #b3b3b3; padding: 20px; text-align: center;">No listening history found. Please upload your extended history files first.</li>';
+      return;
+    }
+    
+    // Add header
+    const headerItem = document.createElement('li');
+    headerItem.style.cssText = 'font-weight: bold; font-size: 24px; color: #1db954; padding: 20px 0 15px 0; text-align: center; border-bottom: 2px solid #1db954; margin-bottom: 10px;';
+    headerItem.textContent = 'Your Top 100 Songs (All Time)';
+    list.appendChild(headerItem);
+    
+    // Display top songs
+    data.songs.forEach((song, index) => {
+      const listItem = document.createElement('li');
+      listItem.className = 'list-item';
+      
+      const listText = document.createElement('div');
+      listText.className = 'list-text';
+      listText.innerHTML = `
+        <span style="font-weight: bold; color: #1db954;">${index + 1}.</span>
+        <span style="font-weight: bold;">${song.track_name}</span>
+        <span style="color: #b3b3b3;">by ${song.artist_name}</span>
+        <span style="color: #1db954; margin-left: 10px;">(${song.play_count} ${song.play_count === 1 ? 'play' : 'plays'})</span>
+      `;
+      
+      listItem.appendChild(listText);
+      list.appendChild(listItem);
+    });
+  } catch (error) {
+    console.error('Error fetching top songs:', error);
+    list.innerHTML = `<li style="color: #ff6b6b; padding: 20px;">Error: ${error.message}</li>`;
+  }
+}
+
+async function getTopArtists() {
+  const list = getList();
+  const cover = getCover();
+  if (!list || !cover) return;
+
+  // Clear previous results completely
+  list.innerHTML = '';
+  
+  // Add a loading message
+  const loadingItem = document.createElement('li');
+  loadingItem.style.cssText = 'color: #b3b3b3; padding: 20px; text-align: center;';
+  loadingItem.textContent = 'Loading your top artists...';
+  list.appendChild(loadingItem);
+  
+  try {
+    const response = await fetch('/api/history/top-artists', {
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Clear loading message
+    list.innerHTML = '';
+    
+    if (!data.artists || data.artists.length === 0) {
+      list.innerHTML = '<li style="color: #b3b3b3; padding: 20px; text-align: center;">No listening history found. Please upload your extended history files first.</li>';
+      return;
+    }
+    
+    // Add header
+    const headerItem = document.createElement('li');
+    headerItem.style.cssText = 'font-weight: bold; font-size: 24px; color: #1db954; padding: 20px 0 15px 0; text-align: center; border-bottom: 2px solid #1db954; margin-bottom: 10px;';
+    headerItem.textContent = 'Your Top 100 Artists (All Time)';
+    list.appendChild(headerItem);
+    
+    // Display top artists
+    data.artists.forEach((artist, index) => {
+      const listItem = document.createElement('li');
+      listItem.className = 'list-item';
+      
+      const listText = document.createElement('div');
+      listText.className = 'list-text';
+      listText.innerHTML = `
+        <span style="font-weight: bold; color: #1db954;">${index + 1}.</span>
+        <span style="font-weight: bold;">${artist.artist_name}</span>
+        <span style="color: #1db954; margin-left: 10px;">(${artist.total_plays} ${artist.total_plays === 1 ? 'play' : 'plays'}, ${artist.total_tracks} ${artist.total_tracks === 1 ? 'song' : 'songs'})</span>
+      `;
+      
+      listItem.appendChild(listText);
+      list.appendChild(listItem);
+    });
+  } catch (error) {
+    console.error('Error fetching top artists:', error);
+    list.innerHTML = `<li style="color: #ff6b6b; padding: 20px;">Error: ${error.message}</li>`;
+  }
+}
+
+async function searchHistory() {
+  const list = getList();
+  const cover = getCover();
+  const searchInput = document.getElementById('history-search-input');
+  
+  if (!list || !cover) return;
+  
+  const query = searchInput ? searchInput.value.trim() : '';
+  
+  if (!query) {
+    alert('Please enter a search query');
+    return;
+  }
+  
+  // Clear previous results completely
+  list.innerHTML = '<li style="color: #b3b3b3; padding: 10px; text-align: center;">Searching...</li>';
+  
+  try {
+    const response = await fetch(`/api/history/search?q=${encodeURIComponent(query)}`, {
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Clear loading message
+    list.innerHTML = '';
+    
+    if ((!data.songs || data.songs.length === 0) && (!data.artists || data.artists.length === 0)) {
+      list.innerHTML = `<li style="color: #b3b3b3; padding: 20px; text-align: center;">No results found for "${query}"</li>`;
+      return;
+    }
+    
+    // Add header
+    const headerItem = document.createElement('li');
+    headerItem.style.cssText = 'font-weight: bold; font-size: 24px; color: #1db954; padding: 20px 0 15px 0; text-align: center; border-bottom: 2px solid #1db954; margin-bottom: 10px;';
+    headerItem.textContent = `Search Results for "${query}"`;
+    list.appendChild(headerItem);
+    
+    // Display songs
+    if (data.songs && data.songs.length > 0) {
+      const songsHeader = document.createElement('li');
+      songsHeader.style.cssText = 'font-weight: bold; font-size: 18px; color: #1db954; padding: 15px 0 10px 0; border-bottom: 1px solid #333;';
+      songsHeader.textContent = 'Songs:';
+      list.appendChild(songsHeader);
+      
+      data.songs.forEach((song) => {
+        const listItem = document.createElement('li');
+        listItem.className = 'list-item';
+        
+        const listText = document.createElement('div');
+        listText.className = 'list-text';
+        listText.innerHTML = `
+          <span style="font-weight: bold;">${song.track_name}</span>
+          <span style="color: #b3b3b3;">by ${song.artist_name}</span>
+          <span style="color: #1db954; margin-left: 10px;">(${song.play_count} ${song.play_count === 1 ? 'play' : 'plays'})</span>
+        `;
+        
+        listItem.appendChild(listText);
+        list.appendChild(listItem);
+      });
+    }
+    
+    // Display artists
+    if (data.artists && data.artists.length > 0) {
+      const artistsHeader = document.createElement('li');
+      artistsHeader.style.cssText = 'font-weight: bold; font-size: 18px; color: #1db954; padding: 15px 0 10px 0; margin-top: 20px; border-bottom: 1px solid #333;';
+      artistsHeader.textContent = 'Artists:';
+      list.appendChild(artistsHeader);
+      
+      data.artists.forEach((artist) => {
+        const listItem = document.createElement('li');
+        listItem.className = 'list-item';
+        
+        const listText = document.createElement('div');
+        listText.className = 'list-text';
+        listText.innerHTML = `
+          <span style="font-weight: bold;">${artist.artist_name}</span>
+          <span style="color: #1db954; margin-left: 10px;">(${artist.total_plays} ${artist.total_plays === 1 ? 'play' : 'plays'}, ${artist.total_tracks} ${artist.total_tracks === 1 ? 'song' : 'songs'})</span>
+        `;
+        
+        listItem.appendChild(listText);
+        list.appendChild(listItem);
+      });
+    }
+  } catch (error) {
+    console.error('Error searching:', error);
+    list.innerHTML = `<li style="color: #ff6b6b; padding: 20px;">Error: ${error.message}</li>`;
+  }
 }

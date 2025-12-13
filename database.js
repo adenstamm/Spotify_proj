@@ -52,6 +52,44 @@ function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_user_id ON sessions(user_id)
     `);
 
+    // Listening history tables
+    db.run(`
+      CREATE TABLE IF NOT EXISTS listening_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        track_name TEXT NOT NULL,
+        artist_name TEXT NOT NULL,
+        play_count INTEGER DEFAULT 1,
+        total_ms_played INTEGER DEFAULT 0,
+        last_played DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id, track_name, artist_name)
+      )
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS artist_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        artist_name TEXT NOT NULL,
+        total_plays INTEGER DEFAULT 0,
+        total_tracks INTEGER DEFAULT 0,
+        last_played DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id, artist_name)
+      )
+    `);
+
+    db.run(`
+      CREATE INDEX IF NOT EXISTS idx_listening_user_id ON listening_history(user_id)
+    `);
+
+    db.run(`
+      CREATE INDEX IF NOT EXISTS idx_artist_user_id ON artist_history(user_id)
+    `);
+
     console.log('Database tables initialized');
   });
 }
@@ -183,6 +221,174 @@ const dbHelpers = {
             reject(err);
           } else {
             resolve({ deleted: this.changes });
+          }
+        }
+      );
+    });
+  },
+
+  // Store or update listening history
+  upsertListeningHistory: (userId, trackName, artistName, msPlayed, endTime) => {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO listening_history (user_id, track_name, artist_name, play_count, total_ms_played, last_played)
+         VALUES (?, ?, ?, 1, ?, ?)
+         ON CONFLICT(user_id, track_name, artist_name) 
+         DO UPDATE SET 
+           play_count = play_count + 1,
+           total_ms_played = total_ms_played + ?,
+           last_played = ?`,
+        [userId, trackName, artistName, msPlayed, endTime, msPlayed, endTime],
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            resolve({ id: this.lastID });
+          }
+        }
+      );
+    });
+  },
+
+  // Store or update artist history
+  upsertArtistHistory: (userId, artistName, endTime) => {
+    return new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO artist_history (user_id, artist_name, total_plays, total_tracks, last_played)
+         VALUES (?, ?, 1, 0, ?)
+         ON CONFLICT(user_id, artist_name) 
+         DO UPDATE SET 
+           total_plays = total_plays + 1,
+           last_played = ?`,
+        [userId, artistName, endTime, endTime],
+        function(updateErr) {
+          if (updateErr) {
+            reject(updateErr);
+          } else {
+            resolve({ id: this.lastID });
+          }
+        }
+      );
+    });
+  },
+
+  // Get top songs for a user
+  getTopSongs: (userId, limit = 100) => {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT track_name, artist_name, play_count, total_ms_played, last_played
+         FROM listening_history
+         WHERE user_id = ?
+         ORDER BY play_count DESC, last_played DESC
+         LIMIT ?`,
+        [userId, limit],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows);
+          }
+        }
+      );
+    });
+  },
+
+  // Get top artists for a user
+  getTopArtists: (userId, limit = 100) => {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT 
+           ah.artist_name, 
+           ah.total_plays, 
+           COUNT(DISTINCT lh.track_name) as total_tracks,
+           ah.last_played
+         FROM artist_history ah
+         LEFT JOIN listening_history lh ON ah.user_id = lh.user_id AND ah.artist_name = lh.artist_name
+         WHERE ah.user_id = ?
+         GROUP BY ah.artist_name, ah.total_plays, ah.last_played
+         ORDER BY ah.total_plays DESC, ah.last_played DESC
+         LIMIT ?`,
+        [userId, limit],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows);
+          }
+        }
+      );
+    });
+  },
+
+  // Search for a song
+  searchSong: (userId, query) => {
+    return new Promise((resolve, reject) => {
+      const searchQuery = `%${query}%`;
+      db.all(
+        `SELECT track_name, artist_name, play_count, total_ms_played, last_played
+         FROM listening_history
+         WHERE user_id = ? AND (track_name LIKE ? OR artist_name LIKE ?)
+         ORDER BY play_count DESC`,
+        [userId, searchQuery, searchQuery],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows);
+          }
+        }
+      );
+    });
+  },
+
+  // Search for an artist
+  searchArtist: (userId, query) => {
+    return new Promise((resolve, reject) => {
+      const searchQuery = `%${query}%`;
+      db.all(
+        `SELECT 
+           ah.artist_name, 
+           ah.total_plays, 
+           COUNT(DISTINCT lh.track_name) as total_tracks,
+           ah.last_played
+         FROM artist_history ah
+         LEFT JOIN listening_history lh ON ah.user_id = lh.user_id AND ah.artist_name = lh.artist_name
+         WHERE ah.user_id = ? AND ah.artist_name LIKE ?
+         GROUP BY ah.artist_name, ah.total_plays, ah.last_played
+         ORDER BY ah.total_plays DESC`,
+        [userId, searchQuery],
+        (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows);
+          }
+        }
+      );
+    });
+  },
+
+  // Clear listening history for a user (optional, for re-uploading)
+  clearListeningHistory: (userId) => {
+    return new Promise((resolve, reject) => {
+      db.run(
+        'DELETE FROM listening_history WHERE user_id = ?',
+        [userId],
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            db.run(
+              'DELETE FROM artist_history WHERE user_id = ?',
+              [userId],
+              function(deleteErr) {
+                if (deleteErr) {
+                  reject(deleteErr);
+                } else {
+                  resolve({ deleted: this.changes });
+                }
+              }
+            );
           }
         }
       );

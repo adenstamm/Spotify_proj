@@ -32,7 +32,49 @@
           >
             Get Average Age
           </button>
+          <button 
+            id="extended-history-btn" 
+            class="sidebar-btn" 
+            onclick="window.location.href='/history'"
+          >
+            Parse Extended History
+          </button>
+          
+          <div id="history-section" class="history-section" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+            <h3 class="history-section-title">Listening History</h3>
+            <button 
+              id="top-songs-btn" 
+              class="sidebar-btn" 
+              onclick="getTopSongs()"
+            >
+              Top 100 Songs
+            </button>
+            <button 
+              id="top-artists-btn" 
+              class="sidebar-btn" 
+              onclick="getTopArtists()"
+            >
+              Top 100 Artists
+            </button>
+            <div class="search-container" style="margin-top: 15px;">
+              <input 
+                type="text" 
+                id="history-search-input" 
+                class="search-input" 
+                placeholder="Search song or artist..."
+                onkeypress="if(event.key === 'Enter') searchHistory()"
+              />
+              <button 
+                id="search-btn" 
+                class="search-btn" 
+                onclick="searchHistory()"
+              >
+                Search
+              </button>
+            </div>
+          </div>
         </div>
+        
       </aside>
       
       <!-- Main content area -->
