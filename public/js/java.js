@@ -475,10 +475,9 @@ function getAverageAge(tracks){
       const releaseDate = tracks[i].track.album.release_date;
       
       if (releaseDate) {
-        // Parse the date - could be "YYYY-MM-DD" or just "YYYY"
+        
         let dateObj;
         if (releaseDate.length === 4) {
-          // Just year - use January 1st of that year
           dateObj = new Date(parseInt(releaseDate), 0, 1);
         } else {
           // Full date

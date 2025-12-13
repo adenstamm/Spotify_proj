@@ -2,6 +2,7 @@
 const express = require('express');
 const path = require('path');
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const axios = require('axios');
 require('dotenv').config();
 const { dbHelpers } = require('./database');
@@ -13,13 +14,17 @@ const port = process.env.PORT || 8888;
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
-// Session configuration
+// Session configuration with database-backed store
 app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.db',
+    dir: './'
+  }),
   secret: process.env.SESSION_SECRET || 'your-super-secret-random-string-here-change-this',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true if using HTTPS
+    secure: process.env.NODE_ENV === 'production', // true in production (HTTPS only)
     httpOnly: true, // Prevents JavaScript access to cookie
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
