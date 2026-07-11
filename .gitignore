@@ -4,3 +4,5 @@ database.sqlite
 sessions.db
 *.log
 .DS_Store
+__pycache__/
+*.py[cod]
