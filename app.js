@@ -344,6 +344,10 @@ app.post('/api/upload/history', (req, res) => {
         }
       }
 
+      // Track seen combinations to avoid duplicates
+      const seenCombinations = new Set();
+      let duplicatesSkipped = 0;
+      
       // Process each JSON file
       for (let i = 0; i < successfulFiles.length; i++) {
         const fileContent = successfulFiles[i];
@@ -355,6 +359,7 @@ app.post('/api/upload/history', (req, res) => {
             console.log(`[${i + 1}/${successfulFiles.length}] Processing ${fileContent.filename}: ${data.length} entries`);
             let fileRecords = 0;
             let fileProcessed = 0;
+            let fileDuplicates = 0;
             
             // Process in batches to show progress
             const batchSize = 1000;
@@ -371,10 +376,24 @@ app.post('/api/upload/history', (req, res) => {
                   continue; // Skip this entry
                 }
                 
-                totalRecords++;
-                fileRecords++;
                 const msPlayed = entry.ms_played || entry.msPlayed || 0;
                 const endTime = entry.ts || entry.endTime || entry.end_time || new Date().toISOString();
+                
+                // Create unique key from the 4 fields
+                const uniqueKey = `${endTime}|${trackName.trim()}|${artistName.trim()}|${msPlayed}`;
+                
+                // Check if we've seen this combination before
+                if (seenCombinations.has(uniqueKey)) {
+                  duplicatesSkipped++;
+                  fileDuplicates++;
+                  continue; // Skip duplicate
+                }
+                
+                // Mark this combination as seen
+                seenCombinations.add(uniqueKey);
+                
+                totalRecords++;
+                fileRecords++;
                 
                 try {
                   await dbHelpers.upsertListeningHistory(
@@ -405,7 +424,7 @@ app.post('/api/upload/history', (req, res) => {
               }
             }
             
-            console.log(`✓ File ${fileContent.filename}: ${fileProcessed}/${fileRecords} records processed`);
+            console.log(`✓ File ${fileContent.filename}: ${fileProcessed}/${fileRecords} records processed, ${fileDuplicates} duplicates skipped`);
           } else {
             console.log(`File ${fileContent.filename} is not an array. Type: ${typeof data}, Keys:`, Object.keys(data || {}));
           }
@@ -417,8 +436,9 @@ app.post('/api/upload/history', (req, res) => {
       
       console.log(`=== UPLOAD COMPLETE ===`);
       console.log(`User ID: ${userId}`);
-      console.log(`Total records found: ${totalRecords}`);
+      console.log(`Total unique records found: ${totalRecords}`);
       console.log(`Successfully processed: ${processedRecords}`);
+      console.log(`Duplicates skipped: ${duplicatesSkipped}`);
       
       const summary = {
         totalFiles: files.length,
@@ -426,6 +446,7 @@ app.post('/api/upload/history', (req, res) => {
         failed: failedFiles.length,
         totalRecords: totalRecords,
         processedRecords: processedRecords,
+        duplicatesSkipped: duplicatesSkipped,
         files: files.map(f => ({
           filename: f.filename,
           size: f.size,
